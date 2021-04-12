@@ -1,42 +1,58 @@
 const router = require("express").Router();
+const Users = require('../users/users-model');
 const { checkUsernameExists, validateRoleName } = require('./auth-middleware');
-const { JWT_SECRET } = require("../secrets"); // use this secret!
+const JWT_SECRET = require("../secrets/index.js"); // use this secret!
+
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 router.post("/register", validateRoleName, (req, res, next) => {
-  /**
-    [POST] /api/auth/register { "username": "anna", "password": "1234", "role_name": "angel" }
+  const newUser = req.body;
 
-    response:
-    status 201
-    {
-      "user"_id: 3,
-      "username": "anna",
-      "role_name": "angel"
-    }
-   */
+  const hash = bcrypt.hashSync(newUser.password, 8);
+  newUser.password = hash;
+  
+  Users.add(newUser)
+    .then((createdUser) => {
+      const token = generateToken(createdUser);
+      res.status(201).json({...createdUser, token})
+    })
+    .catch(next)
+
 });
 
 
 router.post("/login", checkUsernameExists, (req, res, next) => {
-  /**
-    [POST] /api/auth/login { "username": "sue", "password": "1234" }
+  const { username, password } = req.body;
 
-    response:
-    status 200
-    {
-      "message": "sue is back!",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ETC.ETC"
-    }
-
-    The token must expire in one day, and must provide the following information
-    in its payload:
-
-    {
-      "subject"  : 1       // the user_id of the authenticated user
-      "username" : "bob"   // the username of the authenticated user
-      "role_name": "admin" // the role of the authenticated user
-    }
-   */
+  Users.findBy({username})
+    .then((foundUser) => {
+      if (foundUser && bcrypt.compareSync(password, foundUser.password)) {
+        const token = generateToken(foundUser);
+        res.status(200).json({
+          message: `${foundUser.username} is back!`,
+          token
+        })
+      } else {
+        res.status(401).json({message: "Invalid credentials"})
+      }
+    })
+    .catch(next);
 });
+
+const generateToken = (user) => {
+  const options = {
+    expiresIn: '1 day'
+  };
+
+  const payload = {
+    subject: user.user_id,
+    username: user.username,
+    role_name: user.role_name
+  };
+  // const secret = JWT_SECRET;
+
+  return jwt.sign(payload, JWT_SECRET, options);
+}
 
 module.exports = router;
