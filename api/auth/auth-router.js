@@ -1,18 +1,21 @@
 const router = require("express").Router();
 const Users = require('../users/users-model');
 const { checkUsernameExists, validateRoleName } = require('./auth-middleware');
-const { JWT_SECRET } = require("../secrets"); // use this secret!
+const JWT_SECRET = require("../secrets/index.js"); // use this secret!
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 router.post("/register", validateRoleName, (req, res, next) => {
   const newUser = req.body;
+
+  const hash = bcrypt.hashSync(newUser.password, 8);
+  newUser.password = hash;
   
   Users.add(newUser)
     .then((createdUser) => {
       const token = generateToken(createdUser);
-      res.status(201).json({data: createdUser, token})
+      res.status(201).json({...createdUser, token})
     })
     .catch(next)
 
@@ -43,13 +46,13 @@ const generateToken = (user) => {
   };
 
   const payload = {
-    sub: user.user_id,
+    subject: user.user_id,
     username: user.username,
-    role: user.role_name
+    role_name: user.role_name
   };
-  const secret = JWT_SECRET;
+  // const secret = JWT_SECRET;
 
-  return jwt.sign(payload, secret, options);
+  return jwt.sign(payload, JWT_SECRET, options);
 }
 
 module.exports = router;
